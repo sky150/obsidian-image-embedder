@@ -11,14 +11,6 @@ A plugin for Obsidian that automatically downloads and embeds images from URLs w
 - Optional confirmation before embedding
 - Shows file path in success messages (optional)
 
-## Installation
-
-1. Open Obsidian Settings
-2. Go to Community Plugins
-3. Disable Safe Mode (if enabled)
-4. Click Browse and search for "Image Embedder"
-5. Click Install
-
 ## Usage
 
 1. Copy an image URL to your clipboard
