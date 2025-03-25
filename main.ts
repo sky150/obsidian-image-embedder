@@ -14,6 +14,41 @@ const DEFAULT_SETTINGS: ImageEmbedderSettings = {
 	attachmentFolder: 'attachments'
 }
 
+// Helper function to check if a URL is an image
+export function isImageUrl(url: string): boolean {
+	// Common image file extensions
+	const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff'];
+	
+	try {
+		// Try to parse the URL
+		const parsedUrl = new URL(url);
+		// Check if the pathname ends with an image extension
+		return imageExtensions.some(ext => 
+			parsedUrl.pathname.toLowerCase().endsWith(ext)
+		);
+	} catch {
+		// If URL parsing fails, it's not a valid URL
+		return false;
+	}
+}
+
+// Helper function to extract URL from clipboard data
+export function getUrlFromClipboard(clipboardData: DataTransfer | null): string | null {
+	if (!clipboardData) return null;
+
+	// Try to get URL from clipboard
+	const url = clipboardData.getData('text/plain');
+	if (!url) return null;
+
+	// Basic URL validation
+	try {
+		new URL(url);
+		return url;
+	} catch {
+		return null;
+	}
+}
+
 export default class ImageEmbedderPlugin extends Plugin {
 	settings: ImageEmbedderSettings;
 
@@ -23,8 +58,21 @@ export default class ImageEmbedderPlugin extends Plugin {
 		// Register the paste event handler
 		this.registerEvent(
 			this.app.workspace.on('editor-paste', (evt: ClipboardEvent, editor: Editor, markdownView: MarkdownView) => {
-				// We'll implement this later
-				console.log('Paste event detected');
+				// Get the URL from clipboard
+				const url = getUrlFromClipboard(evt.clipboardData);
+				if (!url) return; // Not a URL, let the default paste behavior happen
+
+				// Check if it's an image URL
+				if (!isImageUrl(url)) return; // Not an image URL, let the default paste behavior happen
+
+				// Prevent the default paste behavior
+				evt.preventDefault();
+
+				// Log for debugging
+				console.log('Image URL detected:', url);
+
+				// TODO: We'll implement the download and embed logic in the next step
+				new Notice('Image URL detected! Download and embed coming soon...');
 			})
 		);
 
