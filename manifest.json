@@ -5,6 +5,6 @@
 	"minAppVersion": "0.15.0",
 	"description": "Automatically downloads and embeds images from URLs when pasting",
 	"author": "Natalie Sumbo",
-	"authorUrl": "",
+	"authorUrl": "https://github.com/sky150",
 	"isDesktopOnly": false
 }
