@@ -18,6 +18,9 @@ const DEFAULT_SETTINGS: ImageEmbedderSettings = {
 	useTimestamp: true
 }
 
+export { DEFAULT_SETTINGS };
+export type { ImageEmbedderSettings };
+
 // Helper function to check if a URL is an image
 export function isImageUrl(url: string): boolean {
 	// Common image file extensions
@@ -166,6 +169,35 @@ export default class ImageEmbedderPlugin extends Plugin {
 				evt.preventDefault();
 
 				try {
+					// Show confirmation dialog if enabled
+					if (this.settings.confirmBeforeEmbed) {
+						const confirmed = await new Promise<boolean>((resolve) => {
+							const notice = new Notice('Download and embed this image?', 0);
+							const buttonsDiv = notice.noticeEl.createDiv({
+								cls: 'notice-buttons'
+							});
+							
+							buttonsDiv.createEl('button', {
+								text: 'Yes',
+								cls: 'mod-cta'
+							}).addEventListener('click', () => {
+								notice.hide();
+								resolve(true);
+							});
+							
+							buttonsDiv.createEl('button', {
+								text: 'No'
+							}).addEventListener('click', () => {
+								notice.hide();
+								resolve(false);
+							});
+						});
+
+						if (!confirmed) {
+							return;
+						}
+					}
+
 					// Download and save the image
 					const savedPath = await downloadAndSaveImage(this.app, url, this.settings.attachmentFolder, this.settings);
 					
@@ -179,10 +211,10 @@ export default class ImageEmbedderPlugin extends Plugin {
 					const message = this.settings.showFilePath 
 						? `Image saved and embedded: ${savedPath}`
 						: 'Image saved and embedded successfully!';
-					new Notice(message);
+					new Notice(message, 3000);
 				} catch (error) {
 					console.error('Error processing image:', error);
-					new Notice('Failed to download and embed image. Check console for details.');
+					new Notice('Failed to download and embed image. Check console for details.', 5000);
 				}
 			})
 		);
@@ -215,6 +247,9 @@ class ImageEmbedderSettingTab extends PluginSettingTab {
 	display(): void {
 		const {containerEl} = this;
 		containerEl.empty();
+
+		// Add title and separator
+		containerEl.createEl('h1', { text: 'General Settings' });
 
 		new Setting(containerEl)
 			.setName('Confirm before embedding')
