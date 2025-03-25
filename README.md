@@ -2,6 +2,10 @@
 
 A plugin for Obsidian that automatically downloads and embeds images from URLs when pasting them into your notes.
 
+## Demo
+
+![Demo of Image Embedder](demo.gif)
+
 ## Features
 
 - Automatically detects image URLs when pasting
