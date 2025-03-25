@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, Events } from 'obsidian';
+import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, Events, TFile } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -6,12 +6,16 @@ interface ImageEmbedderSettings {
 	confirmBeforeEmbed: boolean;
 	showFilePath: boolean;
 	attachmentFolder: string;
+	filenameFormat: string;
+	useTimestamp: boolean;
 }
 
 const DEFAULT_SETTINGS: ImageEmbedderSettings = {
 	confirmBeforeEmbed: true,
 	showFilePath: false,
-	attachmentFolder: 'attachments'
+	attachmentFolder: '', // Will be set from Obsidian settings
+	filenameFormat: '{name}-{timestamp}', // Available placeholders: {name}, {timestamp}, {date}
+	useTimestamp: true
 }
 
 // Helper function to check if a URL is an image
@@ -49,15 +53,108 @@ export function getUrlFromClipboard(clipboardData: DataTransfer | null): string 
 	}
 }
 
+// Helper function to create a user-friendly filename
+export function generateUserFriendlyFilename(url: string, settings: ImageEmbedderSettings): string {
+	const urlObj = new URL(url);
+	
+	// Get the last meaningful part of the URL path
+	let filename = urlObj.pathname.split('/').pop() || 'image';
+	
+	// Remove query parameters and hash
+	filename = filename.split('?')[0].split('#')[0];
+	
+	// Get the extension
+	const extension = filename.split('.').pop()?.toLowerCase() || 'jpg';
+	
+	// Remove the extension from the filename
+	filename = filename.slice(0, -(extension.length + 1));
+	
+	// Clean up the filename:
+	// 1. Replace spaces and special characters with hyphens
+	// 2. Remove multiple consecutive hyphens
+	// 3. Remove leading/trailing hyphens
+	filename = filename
+		.replace(/[^a-zA-Z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.toLowerCase();
+	
+	// If filename is empty after cleaning, use a default
+	if (!filename) {
+		filename = 'image';
+	}
+
+	// Generate timestamp and date if needed
+	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+	const date = new Date().toISOString().split('T')[0];
+	
+	// Replace placeholders in the format string
+	let finalFilename = settings.filenameFormat
+		.replace('{name}', filename)
+		.replace('{timestamp}', settings.useTimestamp ? timestamp : '')
+		.replace('{date}', date)
+		.replace(/-+/g, '-') // Clean up multiple consecutive hyphens
+		.replace(/-+$/g, ''); // Remove trailing hyphens
+	
+	// If the filename is empty after replacing placeholders, use the original filename
+	if (!finalFilename.trim()) {
+		finalFilename = filename;
+	}
+	
+	return `${finalFilename}.${extension}`;
+}
+
+// Helper function to ensure attachment folder exists
+async function ensureAttachmentFolder(app: App, folderPath: string): Promise<string> {
+	const folder = app.vault.getAbstractFileByPath(folderPath);
+	if (!folder) {
+		await app.vault.createFolder(folderPath);
+	}
+	return folderPath;
+}
+
+// Helper function to download and save image
+export async function downloadAndSaveImage(app: App, url: string, folderPath: string, settings: ImageEmbedderSettings): Promise<string> {
+	try {
+		// Ensure attachment folder exists
+		await ensureAttachmentFolder(app, folderPath);
+
+		// Generate user-friendly filename
+		const filename = generateUserFriendlyFilename(url, settings);
+		const fullPath = `${folderPath}/${filename}`;
+
+		// Download image
+		const response = await fetch(url);
+		if (!response.ok) {
+			throw new Error(`Failed to download image: ${response.statusText}`);
+		}
+		const arrayBuffer = await response.arrayBuffer();
+
+		// Save to vault
+		await app.vault.createBinary(fullPath, arrayBuffer);
+
+		return fullPath;
+	} catch (error) {
+		console.error('Error downloading image:', error);
+		throw error;
+	}
+}
+
 export default class ImageEmbedderPlugin extends Plugin {
 	settings: ImageEmbedderSettings;
 
 	async onload() {
 		await this.loadSettings();
 
+		// If attachment folder is not set, get it from Obsidian settings
+		if (!this.settings.attachmentFolder) {
+			// @ts-ignore - Internal API
+			this.settings.attachmentFolder = this.app.vault.config.attachmentFolderPath || 'attachments';
+			await this.saveSettings();
+		}
+
 		// Register the paste event handler
 		this.registerEvent(
-			this.app.workspace.on('editor-paste', (evt: ClipboardEvent, editor: Editor, markdownView: MarkdownView) => {
+			this.app.workspace.on('editor-paste', async (evt: ClipboardEvent, editor: Editor, markdownView: MarkdownView) => {
 				// Get the URL from clipboard
 				const url = getUrlFromClipboard(evt.clipboardData);
 				if (!url) return; // Not a URL, let the default paste behavior happen
@@ -68,11 +165,25 @@ export default class ImageEmbedderPlugin extends Plugin {
 				// Prevent the default paste behavior
 				evt.preventDefault();
 
-				// Log for debugging
-				console.log('Image URL detected:', url);
+				try {
+					// Download and save the image
+					const savedPath = await downloadAndSaveImage(this.app, url, this.settings.attachmentFolder, this.settings);
+					
+					// Create the markdown link
+					const markdownLink = `![[${savedPath}]]`;
+					
+					// Insert the markdown link at cursor position
+					editor.replaceSelection(markdownLink);
 
-				// TODO: We'll implement the download and embed logic in the next step
-				new Notice('Image URL detected! Download and embed coming soon...');
+					// Show success message
+					const message = this.settings.showFilePath 
+						? `Image saved and embedded: ${savedPath}`
+						: 'Image saved and embedded successfully!';
+					new Notice(message);
+				} catch (error) {
+					console.error('Error processing image:', error);
+					new Notice('Failed to download and embed image. Check console for details.');
+				}
 			})
 		);
 
@@ -127,12 +238,33 @@ class ImageEmbedderSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Attachment folder')
-			.setDesc('Folder where downloaded images will be saved (relative to vault root)')
+			.setDesc('Folder where downloaded images will be saved (relative to vault root). Leave empty to use Obsidian\'s default attachment folder.')
 			.addText((text) => text
-				.setPlaceholder('attachments')
+				.setPlaceholder('Use Obsidian default')
 				.setValue(this.plugin.settings.attachmentFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.attachmentFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Filename format')
+			.setDesc('Format for saved filenames. Available placeholders: {name}, {timestamp}, {date}')
+			.addText((text) => text
+				.setPlaceholder('{name}-{timestamp}')
+				.setValue(this.plugin.settings.filenameFormat)
+				.onChange(async (value) => {
+					this.plugin.settings.filenameFormat = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Use timestamp')
+			.setDesc('Add timestamp to filenames for uniqueness')
+			.addToggle((toggle) => toggle
+				.setValue(this.plugin.settings.useTimestamp)
+				.onChange(async (value) => {
+					this.plugin.settings.useTimestamp = value;
 					await this.plugin.saveSettings();
 				}));
 	}
