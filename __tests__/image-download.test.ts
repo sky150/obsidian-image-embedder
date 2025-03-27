@@ -1,39 +1,71 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, Vault } from 'obsidian';
 import { downloadAndSaveImage, generateUserFriendlyFilename } from '../main';
 
 // Mock the fetch function
 global.fetch = jest.fn();
 
-// Mock the App and TFile classes
-const mockApp = {
-    vault: {
-        getAbstractFileByPath: jest.fn(),
-        createFolder: jest.fn(),
-        createBinary: jest.fn(),
-        config: {
-            attachmentFolderPath: 'attachments'
-        }
-    }
-} as unknown as App;
+describe('Image Download', () => {
+    let app: App;
+    let mockVault: Vault;
 
-const mockTFile = {
-    path: 'test/path',
-    name: 'test.jpg'
-} as unknown as TFile;
-
-describe('Image Download Functionality', () => {
     beforeEach(() => {
-        // Reset all mocks before each test
-        jest.clearAllMocks();
+        // Reset fetch mock before each test
+        (global.fetch as jest.Mock).mockReset();
         
-        // Setup default mock implementations
-        (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(mockTFile);
-        (mockApp.vault.createFolder as jest.Mock).mockResolvedValue(undefined);
-        (mockApp.vault.createBinary as jest.Mock).mockResolvedValue(undefined);
+        // Setup default successful fetch response
         (global.fetch as jest.Mock).mockResolvedValue({
             ok: true,
             arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(0))
         });
+
+        mockVault = {
+            getAbstractFileByPath: jest.fn(),
+            createFolder: jest.fn(),
+            createBinary: jest.fn(),
+            config: {
+                attachmentFolderPath: 'attachments'
+            },
+            getRoot: jest.fn(),
+            delete: jest.fn(),
+            read: jest.fn(),
+            modify: jest.fn(),
+            process: jest.fn(),
+            adapter: {
+                exists: jest.fn(),
+                mkdir: jest.fn(),
+                write: jest.fn(),
+                read: jest.fn()
+            },
+            configDir: '',
+            getName: jest.fn(),
+            getFileByPath: jest.fn(),
+            getFolderByPath: jest.fn(),
+            create: jest.fn(),
+            createFile: jest.fn(),
+            rename: jest.fn(),
+            copy: jest.fn(),
+            getAllLoadedFiles: jest.fn(),
+            getMarkdownFiles: jest.fn(),
+            getFiles: jest.fn(),
+            on: jest.fn(),
+            off: jest.fn(),
+            trigger: jest.fn(),
+            tryTrigger: jest.fn(),
+            exists: jest.fn(),
+            trash: jest.fn(),
+            recursive: jest.fn(),
+            getResourcePath: jest.fn(),
+            resolveFileUrl: jest.fn(),
+            getAvailablePathForAttachment: jest.fn()
+        } as unknown as Vault;
+
+        app = {
+            vault: mockVault
+        } as unknown as App;
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
     });
 
     describe('generateUserFriendlyFilename', () => {
@@ -101,21 +133,21 @@ describe('Image Download Functionality', () => {
             const url = 'https://example.com/image.jpg';
             const folderPath = 'attachments';
             
-            await downloadAndSaveImage(mockApp, url, folderPath, defaultSettings);
+            await downloadAndSaveImage(app, url, folderPath, defaultSettings);
             
             expect(global.fetch).toHaveBeenCalledWith(url);
-            expect(mockApp.vault.createBinary).toHaveBeenCalled();
+            expect(mockVault.createBinary).toHaveBeenCalled();
         });
 
         it('should create the attachment folder if it does not exist', async () => {
             const url = 'https://example.com/image.jpg';
             const folderPath = 'attachments';
             
-            (mockApp.vault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
+            (mockVault.getAbstractFileByPath as jest.Mock).mockReturnValue(null);
             
-            await downloadAndSaveImage(mockApp, url, folderPath, defaultSettings);
+            await downloadAndSaveImage(app, url, folderPath, defaultSettings);
             
-            expect(mockApp.vault.createFolder).toHaveBeenCalledWith(folderPath);
+            expect(mockVault.createFolder).toHaveBeenCalledWith(folderPath);
         });
 
         it('should throw an error when the download fails', async () => {
@@ -127,7 +159,7 @@ describe('Image Download Functionality', () => {
                 statusText: 'Not Found'
             });
             
-            await expect(downloadAndSaveImage(mockApp, url, folderPath, defaultSettings))
+            await expect(downloadAndSaveImage(app, url, folderPath, defaultSettings))
                 .rejects
                 .toThrow('Failed to download image: Not Found');
         });
@@ -136,9 +168,9 @@ describe('Image Download Functionality', () => {
             const url = 'https://example.com/image.jpg';
             const folderPath = 'attachments';
             
-            (mockApp.vault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
+            (mockVault.createBinary as jest.Mock).mockRejectedValue(new Error('Save failed'));
             
-            await expect(downloadAndSaveImage(mockApp, url, folderPath, defaultSettings))
+            await expect(downloadAndSaveImage(app, url, folderPath, defaultSettings))
                 .rejects
                 .toThrow('Save failed');
         });
