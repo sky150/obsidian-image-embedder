@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, Events, TFile } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Events, TFile, Vault } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -151,7 +151,7 @@ export default class ImageEmbedderPlugin extends Plugin {
 		// If attachment folder is not set, get it from Obsidian settings
 		if (!this.settings.attachmentFolder) {
 			// @ts-ignore - Internal API
-			this.settings.attachmentFolder = this.app.vault.config.attachmentFolderPath || 'attachments';
+			this.settings.attachmentFolder = (this.app.vault as any).config?.attachmentFolderPath || 'attachments';
 			await this.saveSettings();
 		}
 
@@ -200,7 +200,7 @@ export default class ImageEmbedderPlugin extends Plugin {
 
 					// Download and save the image
 					const savedPath = await downloadAndSaveImage(this.app, url, this.settings.attachmentFolder, this.settings);
-					
+
 					// Create the markdown link
 					const markdownLink = `![[${savedPath}]]`;
 					
@@ -208,7 +208,7 @@ export default class ImageEmbedderPlugin extends Plugin {
 					editor.replaceSelection(markdownLink);
 
 					// Show success message
-					const message = this.settings.showFilePath 
+					const message = this.settings.showFilePath
 						? `Image saved and embedded: ${savedPath}`
 						: 'Image saved and embedded successfully!';
 					new Notice(message, 3000);
@@ -249,8 +249,7 @@ class ImageEmbedderSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		// Add title and separator
-		containerEl.createEl('h1', { text: 'General Settings' });
-
+		
 		new Setting(containerEl)
 			.setName('Confirm before embedding')
 			.setDesc('Show a confirmation dialog before downloading and embedding images')
