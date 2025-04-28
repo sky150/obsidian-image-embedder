@@ -1,93 +1,86 @@
-import { App, Editor, MarkdownView, Plugin, PluginManifest, Vault, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { App, Editor, MarkdownView, Plugin, PluginManifest, Vault, TAbstractFile, TFile, TFolder, FileManager, Workspace } from 'obsidian';
 import ImageEmbedderPlugin from '../main';
-import { DEFAULT_SETTINGS } from '../main';
-import type { ImageEmbedderSettings } from '../main';
-
-// Extend Vault type to include config property
-interface VaultWithConfig extends Vault {
-    config?: {
-        attachmentFolderPath?: string;
-    };
-}
+import { DEFAULT_SETTINGS, ImageEmbedderSettings } from '../main';
 
 describe('Image Embedder Plugin Settings', () => {
-    let app: App;
     let plugin: ImageEmbedderPlugin;
-    let manifest: PluginManifest;
-    let mockVault: VaultWithConfig;
+    let app: App & { fileManager: FileManager };
+    let mockFileManager: FileManager;
+    let mockWorkspace: Workspace;
 
     beforeEach(async () => {
-        manifest = {
-            id: 'test-plugin',
-            name: 'Test Plugin',
-            version: '1.0.0',
-            minAppVersion: '0.15.0',
-            author: 'Natalie Sumbo',
-            description: 'Test Settings'
-        };
+        mockFileManager = {
+            getAvailablePathForAttachment: jest.fn().mockImplementation((filename: string, extension: string) => {
+                // Return a path in the format: attachments/filename.extension
+                // If no filename is provided, use a default
+                const name = filename || 'image';
+                const ext = extension || '';
+                return Promise.resolve(`attachments/${name}${ext}`);
+            }),
+        } as unknown as FileManager;
 
-        mockVault = {
-            getAbstractFileByPath: jest.fn(),
-            createFolder: jest.fn(),
-            createBinary: jest.fn(),
-            config: {
-                attachmentFolderPath: 'default-attachments'
-            },
-            getRoot: jest.fn(),
-            delete: jest.fn(),
-            read: jest.fn(),
-            modify: jest.fn(),
-            process: jest.fn(),
-            adapter: {
-                exists: jest.fn(),
-                mkdir: jest.fn(),
-                write: jest.fn(),
-                read: jest.fn()
-            },
-            configDir: '',
-            getName: jest.fn(),
-            getFileByPath: jest.fn(),
-            getFolderByPath: jest.fn(),
-            create: jest.fn(),
-            createFile: jest.fn(),
-            rename: jest.fn(),
-            copy: jest.fn(),
-            getAllLoadedFiles: jest.fn(),
-            getMarkdownFiles: jest.fn(),
-            getFiles: jest.fn(),
+        mockWorkspace = {
             on: jest.fn(),
             off: jest.fn(),
             trigger: jest.fn(),
-            tryTrigger: jest.fn(),
-            exists: jest.fn(),
-            trash: jest.fn(),
-            recursive: jest.fn(),
-            getResourcePath: jest.fn(),
-            resolveFileUrl: jest.fn(),
-            getAvailablePathForAttachment: jest.fn()
-        } as unknown as VaultWithConfig;
+            getActiveViewOfType: jest.fn()
+        } as unknown as Workspace;
 
         app = {
-            vault: mockVault,
-            workspace: {
+            fileManager: mockFileManager,
+            workspace: mockWorkspace,
+            vault: {
+                getAbstractFileByPath: jest.fn(),
+                createFolder: jest.fn(),
+                createBinary: jest.fn(),
+                getRoot: jest.fn(),
+                delete: jest.fn(),
+                read: jest.fn(),
+                modify: jest.fn(),
+                process: jest.fn(),
+                adapter: {
+                    exists: jest.fn(),
+                    mkdir: jest.fn(),
+                    write: jest.fn(),
+                    read: jest.fn()
+                },
+                configDir: '',
+                getName: jest.fn(),
+                getFileByPath: jest.fn(),
+                getFolderByPath: jest.fn(),
+                create: jest.fn(),
+                createFile: jest.fn(),
+                rename: jest.fn(),
+                copy: jest.fn(),
+                getAllLoadedFiles: jest.fn(),
+                getMarkdownFiles: jest.fn(),
+                getFiles: jest.fn(),
                 on: jest.fn(),
                 off: jest.fn(),
                 trigger: jest.fn(),
-                getActiveViewOfType: jest.fn()
-            }
-        } as unknown as App;
+                tryTrigger: jest.fn(),
+                exists: jest.fn(),
+                trash: jest.fn(),
+                recursive: jest.fn(),
+                cachedRead: jest.fn(),
+                readBinary: jest.fn(),
+                modifyBinary: jest.fn(),
+                append: jest.fn(),
+                getResourcePath: jest.fn(),
+                resolveFileUrl: jest.fn()
+            } as unknown as Vault
+        } as App & { fileManager: FileManager };
 
-        plugin = new ImageEmbedderPlugin(app, manifest);
+        plugin = new ImageEmbedderPlugin(app, {} as PluginManifest);
+        plugin.app = app; // Make sure app is set
         plugin.loadData = jest.fn().mockResolvedValue(DEFAULT_SETTINGS);
         plugin.saveData = jest.fn().mockResolvedValue(undefined);
+        plugin.registerEvent = jest.fn();
+        plugin.addSettingTab = jest.fn();
         await plugin.loadSettings();
     });
 
     afterEach(() => {
-        app = null as unknown as App;
-        plugin = null as unknown as ImageEmbedderPlugin;
-        manifest = null as unknown as PluginManifest;
-        mockVault = null as unknown as VaultWithConfig;
         jest.clearAllMocks();
     });
 
@@ -130,25 +123,30 @@ describe('Image Embedder Plugin Settings', () => {
     });
 
     describe('Attachment Folder Handling', () => {
-        it('should use default attachment folder from Obsidian settings', async () => {
-            expect(plugin.settings.attachmentFolder).toBe('');
-            expect(mockVault.config?.attachmentFolderPath).toBe('default-attachments');
+        it('should use default attachment folder when not set', async () => {
+            plugin.settings.attachmentFolder = '';
+            await plugin.onload();
+            expect(plugin.settings.attachmentFolder).toBe('attachments');
+            expect(mockFileManager.getAvailablePathForAttachment).toHaveBeenCalledWith('', '');
         });
 
-        it('should keep custom attachment folder', async () => {
-            const customSettings = {
+        it('should use custom attachment folder when set', async () => {
+            // First load the plugin to initialize settings
+            await plugin.onload();
+            
+            // Then set the custom folder
+            plugin.settings.attachmentFolder = 'custom-folder';
+            await plugin.saveSettings();
+            
+            // Update the mock to return our saved settings
+            (plugin.loadData as jest.Mock).mockResolvedValueOnce({
                 ...DEFAULT_SETTINGS,
                 attachmentFolder: 'custom-folder'
-            };
-            (plugin.loadData as jest.Mock).mockResolvedValueOnce(customSettings);
+            });
+            
+            // Verify that loading again doesn't change the setting
             await plugin.loadSettings();
             expect(plugin.settings.attachmentFolder).toBe('custom-folder');
-        });
-
-        it('should fallback to attachments folder', async () => {
-            mockVault.config = {};
-            await plugin.loadSettings();
-            expect(plugin.settings.attachmentFolder).toBe('');
         });
     });
 

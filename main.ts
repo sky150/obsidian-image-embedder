@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Events, TFile, Vault } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Events, TFile, Vault, FileManager } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -144,14 +144,18 @@ export async function downloadAndSaveImage(app: App, url: string, folderPath: st
 
 export default class ImageEmbedderPlugin extends Plugin {
 	settings: ImageEmbedderSettings;
+	app: App & { fileManager: FileManager };
 
 	async onload() {
 		await this.loadSettings();
+		console.log(this.settings.attachmentFolder);
 
 		// If attachment folder is not set, get it from Obsidian settings
 		if (!this.settings.attachmentFolder) {
-			// @ts-ignore - Internal API
-			this.settings.attachmentFolder = (this.app.vault as any).config?.attachmentFolderPath || 'attachments';
+			// Use the official API to get the attachment folder path
+			const defaultAttachmentPath = await this.app.fileManager.getAvailablePathForAttachment('', '');
+			console.log(defaultAttachmentPath);
+			this.settings.attachmentFolder = defaultAttachmentPath.split('/')[0] || 'attachments';
 			await this.saveSettings();
 		}
 
@@ -173,7 +177,7 @@ export default class ImageEmbedderPlugin extends Plugin {
 					if (this.settings.confirmBeforeEmbed) {
 						const confirmed = await new Promise<boolean>((resolve) => {
 							const notice = new Notice('Download and embed this image?', 0);
-							const buttonsDiv = notice.noticeEl.createDiv({
+							const buttonsDiv = notice.containerEl.createDiv({
 								cls: 'notice-buttons'
 							});
 							

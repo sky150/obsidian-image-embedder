@@ -23,7 +23,7 @@ jest.mock('obsidian', () => {
     return {
         ...originalModule,
         Notice: jest.fn().mockImplementation((text, duration = 0) => {
-            const noticeEl = {
+            const containerEl = {
                 createDiv: jest.fn().mockReturnValue({
                     createEl: jest.fn().mockReturnValue({
                         addEventListener: jest.fn().mockImplementation((event, callback) => {
@@ -38,7 +38,7 @@ jest.mock('obsidian', () => {
             return {
                 text,
                 duration,
-                noticeEl,
+                containerEl,
                 hide: jest.fn()
             };
         }),
