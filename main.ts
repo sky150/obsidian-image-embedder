@@ -1,6 +1,5 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Events, TFile, Vault, FileManager } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
 interface ImageEmbedderSettings {
 	confirmBeforeEmbed: boolean;
@@ -23,18 +22,15 @@ export type { ImageEmbedderSettings };
 
 // Helper function to check if a URL is an image
 export function isImageUrl(url: string): boolean {
-	// Common image file extensions
 	const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff'];
 	
 	try {
-		// Try to parse the URL
 		const parsedUrl = new URL(url);
-		// Check if the pathname ends with an image extension
+
 		return imageExtensions.some(ext => 
 			parsedUrl.pathname.toLowerCase().endsWith(ext)
 		);
 	} catch {
-		// If URL parsing fails, it's not a valid URL
 		return false;
 	}
 }
@@ -137,7 +133,6 @@ export async function downloadAndSaveImage(app: App, url: string, folderPath: st
 
 		return fullPath;
 	} catch (error) {
-		console.error('Error downloading image:', error);
 		throw error;
 	}
 }
@@ -148,13 +143,11 @@ export default class ImageEmbedderPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		console.log(this.settings.attachmentFolder);
 
 		// If attachment folder is not set, get it from Obsidian settings
 		if (!this.settings.attachmentFolder) {
 			// Use the official API to get the attachment folder path
 			const defaultAttachmentPath = await this.app.fileManager.getAvailablePathForAttachment('', '');
-			console.log(defaultAttachmentPath);
 			this.settings.attachmentFolder = defaultAttachmentPath.split('/')[0] || 'attachments';
 			await this.saveSettings();
 		}
