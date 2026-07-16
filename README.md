@@ -53,10 +53,12 @@ This plugin is built using the [Obsidian Plugin API](https://github.com/obsidian
    ```
 4. The built plugin will be in the `dist` folder
 
+## Support
+
+For issues or suggestions, [open an issue](https://github.com/sky150/obsidian-image-embedder/issues) on GitHub.
+
+If you find this plugin useful, consider [buying me a coffee](https://www.buymeacoffee.com/sky150).
+
 ## License
 
 MIT License - see LICENSE file for details
-
-## Support
-
-If you encounter any issues or have suggestions, please [open an issue](https://github.com/yourusername/obsidian-image-embedder/issues) on GitHub.
