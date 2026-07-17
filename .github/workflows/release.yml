@@ -12,6 +12,7 @@ jobs:
             contents: write
             id-token: write
             attestations: write
+            artifact-metadata: write
         steps:
             - uses: actions/checkout@v6
 
@@ -29,22 +30,30 @@ jobs:
             - name: Check for optional styles
               id: styles
               run: |
-                  [ -f styles.css ] && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
+                  if [ -f styles.css ]; then
+                    echo "exists=true" >> "$GITHUB_OUTPUT"
+                    echo "files=styles.css" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "exists=false" >> "$GITHUB_OUTPUT"
+                    echo "files=" >> "$GITHUB_OUTPUT"
+                  fi
 
             - name: Attest build provenance
-              uses: actions/attest@v4
+              uses: actions/attest-build-provenance@v4
               with:
                   subject-path: |
                       main.js
-                      ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+                      manifest.json
+                      ${{ steps.styles.outputs.files }}
 
             - name: Create release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
+                  files="main.js manifest.json ${{ steps.styles.outputs.files }}"
 
                   gh release create "$tag" \
                     --title="$tag" \
                     --generate-notes \
-                    main.js manifest.json ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+                    $files
