@@ -1,7 +1,7 @@
 {
 	"id": "image-embedder",
 	"name": "Image Embedder",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "1.5.7",
 	"description": "Automatically downloads and embeds images from URLs when pasting.",
 	"author": "Natalie Sumbo",

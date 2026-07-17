@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-image-embedder",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Automatically downloads and embeds images when pasting image URLs into notes",
 	"main": "main.js",
 	"scripts": {
