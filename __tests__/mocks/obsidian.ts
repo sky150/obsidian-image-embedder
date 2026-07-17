@@ -6,4 +6,6 @@ export class Notice {}
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
-export class Events {} 
+export class Events {}
+
+export const requestUrl = jest.fn();

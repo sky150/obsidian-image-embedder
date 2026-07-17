@@ -4,22 +4,22 @@ import ImageEmbedderPlugin from '../main';
 // Mock the Notice class and Plugin class
 jest.mock('obsidian', () => {
     const originalModule = jest.requireActual('obsidian');
-    
+
     class MockPlugin {
         app: App;
         manifest: PluginManifest;
-        
+
         constructor(app: App, manifest: PluginManifest) {
             this.app = app;
             this.manifest = manifest;
         }
-        
+
         registerEvent = jest.fn();
         loadData = jest.fn().mockResolvedValue({});
         saveData = jest.fn().mockResolvedValue(undefined);
         addSettingTab = jest.fn();
     }
-    
+
     return {
         ...originalModule,
         Notice: jest.fn().mockImplementation((text, duration = 0) => {
@@ -42,22 +42,27 @@ jest.mock('obsidian', () => {
                 hide: jest.fn()
             };
         }),
-        Plugin: MockPlugin
+        Plugin: MockPlugin,
+        requestUrl: jest.fn().mockImplementation((url) => {
+            const urlString = typeof url === 'string' ? url : url.url;
+            if (urlString === 'https://example.com/image.jpg') {
+                return Promise.resolve({
+                    status: 200,
+                    headers: {},
+                    arrayBuffer: new ArrayBuffer(0),
+                    json: {},
+                    text: ''
+                });
+            }
+            return Promise.resolve({
+                status: 404,
+                headers: {},
+                arrayBuffer: new ArrayBuffer(0),
+                json: {},
+                text: 'Not Found'
+            });
+        })
     };
-});
-
-// Mock global fetch
-global.fetch = jest.fn().mockImplementation((url) => {
-    if (url === 'https://example.com/image.jpg') {
-        return Promise.resolve({
-            ok: true,
-            arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
-        });
-    }
-    return Promise.resolve({
-        ok: false,
-        statusText: 'Not Found'
-    });
 });
 
 describe('Notifications and Confirmation Dialog', () => {
@@ -193,12 +198,6 @@ describe('Notifications and Confirmation Dialog', () => {
             plugin.settings.showFilePath = true;
             plugin.settings.confirmBeforeEmbed = false;
 
-            // Mock fetch
-            global.fetch = jest.fn().mockResolvedValue({
-                ok: true,
-                arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(0))
-            });
-
             // Create a mock clipboard event
             const mockClipboardEvent = {
                 clipboardData: {
@@ -221,12 +220,6 @@ describe('Notifications and Confirmation Dialog', () => {
             // Set up settings
             plugin.settings.showFilePath = false;
             plugin.settings.confirmBeforeEmbed = false;
-
-            // Mock fetch
-            global.fetch = jest.fn().mockResolvedValue({
-                ok: true,
-                arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(0))
-            });
 
             // Create a mock clipboard event
             const mockClipboardEvent = {
@@ -252,10 +245,14 @@ describe('Notifications and Confirmation Dialog', () => {
             // Set up settings
             plugin.settings.confirmBeforeEmbed = false;
 
-            // Mock fetch to simulate a failed download
-            global.fetch = jest.fn().mockResolvedValue({
-                ok: false,
-                statusText: 'Not Found'
+            // Mock requestUrl to simulate a failed download
+            const { requestUrl } = jest.requireMock('obsidian');
+            requestUrl.mockResolvedValue({
+                status: 404,
+                headers: {},
+                arrayBuffer: new ArrayBuffer(0),
+                json: {},
+                text: 'Not Found'
             });
 
             // Create a mock clipboard event

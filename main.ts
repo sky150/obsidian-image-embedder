@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Events, TFile, Vault, FileManager } from 'obsidian';
+import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, FileManager, requestUrl } from 'obsidian';
 
 
 interface ImageEmbedderSettings {
@@ -113,28 +113,24 @@ async function ensureAttachmentFolder(app: App, folderPath: string): Promise<str
 
 // Helper function to download and save image
 export async function downloadAndSaveImage(app: App, url: string, folderPath: string, settings: ImageEmbedderSettings): Promise<string> {
-	try {
-		// Ensure attachment folder exists
-		await ensureAttachmentFolder(app, folderPath);
+	// Ensure attachment folder exists
+	await ensureAttachmentFolder(app, folderPath);
 
-		// Generate user-friendly filename
-		const filename = generateUserFriendlyFilename(url, settings);
-		const fullPath = `${folderPath}/${filename}`;
+	// Generate user-friendly filename
+	const filename = generateUserFriendlyFilename(url, settings);
+	const fullPath = `${folderPath}/${filename}`;
 
-		// Download image
-		const response = await fetch(url);
-		if (!response.ok) {
-			throw new Error(`Failed to download image: ${response.statusText}`);
-		}
-		const arrayBuffer = await response.arrayBuffer();
-
-		// Save to vault
-		await app.vault.createBinary(fullPath, arrayBuffer);
-
-		return fullPath;
-	} catch (error) {
-		throw error;
+	// Download image
+	const response = await requestUrl({ url, throw: false });
+	if (response.status >= 400) {
+		throw new Error(`Failed to download image: ${response.status}`);
 	}
+	const arrayBuffer = response.arrayBuffer;
+
+	// Save to vault
+	await app.vault.createBinary(fullPath, arrayBuffer);
+
+	return fullPath;
 }
 
 export default class ImageEmbedderPlugin extends Plugin {
@@ -155,6 +151,9 @@ export default class ImageEmbedderPlugin extends Plugin {
 		// Register the paste event handler
 		this.registerEvent(
 			this.app.workspace.on('editor-paste', async (evt: ClipboardEvent, editor: Editor, markdownView: MarkdownView) => {
+				// Respect handlers that have already handled this event
+				if (evt.defaultPrevented) return;
+
 				// Get the URL from clipboard
 				const url = getUrlFromClipboard(evt.clipboardData);
 				if (!url) return; // Not a URL, let the default paste behavior happen
@@ -239,6 +238,41 @@ class ImageEmbedderSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: ImageEmbedderPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	getSettingDefinitions(): Record<string, { type: string; default: unknown; title: string; description: string }> {
+		return {
+			confirmBeforeEmbed: {
+				type: 'boolean',
+				default: DEFAULT_SETTINGS.confirmBeforeEmbed,
+				title: 'Confirm before embedding',
+				description: 'Show a confirmation dialog before downloading and embedding images'
+			},
+			showFilePath: {
+				type: 'boolean',
+				default: DEFAULT_SETTINGS.showFilePath,
+				title: 'Show file path',
+				description: 'Show the saved file path in the success notice'
+			},
+			attachmentFolder: {
+				type: 'text',
+				default: DEFAULT_SETTINGS.attachmentFolder,
+				title: 'Attachment folder',
+				description: 'Folder where downloaded images will be saved (relative to vault root). Leave empty to use Obsidian\'s default attachment folder.'
+			},
+			filenameFormat: {
+				type: 'text',
+				default: DEFAULT_SETTINGS.filenameFormat,
+				title: 'Filename format',
+				description: 'Format for saved filenames. Available placeholders: {name}, {timestamp}, {date}'
+			},
+			useTimestamp: {
+				type: 'boolean',
+				default: DEFAULT_SETTINGS.useTimestamp,
+				title: 'Use timestamp',
+				description: 'Add timestamp to filenames for uniqueness'
+			}
+		};
 	}
 
 	display(): void {

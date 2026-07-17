@@ -1,21 +1,21 @@
-import { App, TFile, Vault } from 'obsidian';
+import { App, TFile, Vault, requestUrl } from 'obsidian';
 import { downloadAndSaveImage, generateUserFriendlyFilename } from '../main';
-
-// Mock the fetch function
-global.fetch = jest.fn();
 
 describe('Image Download', () => {
     let app: App;
     let mockVault: Vault;
 
     beforeEach(() => {
-        // Reset fetch mock before each test
-        (global.fetch as jest.Mock).mockReset();
+        // Reset requestUrl mock before each test
+        (requestUrl as jest.Mock).mockReset();
         
-        // Setup default successful fetch response
-        (global.fetch as jest.Mock).mockResolvedValue({
-            ok: true,
-            arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(0))
+        // Setup default successful requestUrl response
+        (requestUrl as jest.Mock).mockResolvedValue({
+            status: 200,
+            headers: {},
+            arrayBuffer: new ArrayBuffer(0),
+            json: {},
+            text: ''
         });
 
         mockVault = {
@@ -135,7 +135,7 @@ describe('Image Download', () => {
             
             await downloadAndSaveImage(app, url, folderPath, defaultSettings);
             
-            expect(global.fetch).toHaveBeenCalledWith(url);
+            expect(requestUrl).toHaveBeenCalledWith({ url, throw: false });
             expect(mockVault.createBinary).toHaveBeenCalled();
         });
 
@@ -154,14 +154,17 @@ describe('Image Download', () => {
             const url = 'https://example.com/image.jpg';
             const folderPath = 'attachments';
             
-            (global.fetch as jest.Mock).mockResolvedValue({
-                ok: false,
-                statusText: 'Not Found'
+            (requestUrl as jest.Mock).mockResolvedValue({
+                status: 404,
+                headers: {},
+                arrayBuffer: new ArrayBuffer(0),
+                json: {},
+                text: 'Not Found'
             });
             
             await expect(downloadAndSaveImage(app, url, folderPath, defaultSettings))
                 .rejects
-                .toThrow('Failed to download image: Not Found');
+                .toThrow('Failed to download image: 404');
         });
 
         it('should throw an error when saving to vault fails', async () => {
