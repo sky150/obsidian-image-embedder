@@ -23,13 +23,36 @@ export type { ImageEmbedderSettings };
 // Helper function to check if a URL is an image
 export function isImageUrl(url: string): boolean {
 	const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff'];
-	
+
+	const hasImageExtension = (pathname: string): boolean =>
+		imageExtensions.some(ext => pathname.toLowerCase().endsWith(ext));
+
 	try {
 		const parsedUrl = new URL(url);
 
-		return imageExtensions.some(ext => 
-			parsedUrl.pathname.toLowerCase().endsWith(ext)
-		);
+		if (hasImageExtension(parsedUrl.pathname)) return true;
+
+		const uParam = parsedUrl.searchParams.get('u');
+		if (uParam) {
+			try {
+				const decoded = new URL(decodeURIComponent(uParam));
+				if (hasImageExtension(decoded.pathname)) return true;
+			} catch {
+				// 'u' parameter is not a valid URL, ignore
+			}
+		}
+
+		for (const [, value] of parsedUrl.searchParams.entries()) {
+			try {
+				const decoded = decodeURIComponent(value);
+				const innerUrl = new URL(decoded);
+				if (hasImageExtension(innerUrl.pathname)) return true;
+			} catch {
+				// Not a valid URL, skip
+			}
+		}
+
+		return false;
 	} catch {
 		return false;
 	}
