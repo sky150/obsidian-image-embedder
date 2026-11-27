@@ -268,9 +268,11 @@ describe('Notifications and Confirmation Dialog', () => {
 
             // Verify that Notice was called with the error message
             expect(Notice).toHaveBeenCalledWith(
-                'Failed to download and embed image. Check console for details.',
+                'Failed to download image, pasted the URL instead. Check console for details.',
                 5000
             );
+            // The URL must not be lost
+            expect(mockEditor.replaceSelection).toHaveBeenCalledWith('https://example.com/image.jpg');
         });
     });
 }); 

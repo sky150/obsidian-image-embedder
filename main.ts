@@ -20,42 +20,74 @@ const DEFAULT_SETTINGS: ImageEmbedderSettings = {
 export { DEFAULT_SETTINGS };
 export type { ImageEmbedderSettings };
 
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'];
+
+const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
+	'image/jpeg': 'jpg',
+	'image/jpg': 'jpg',
+	'image/png': 'png',
+	'image/gif': 'gif',
+	'image/webp': 'webp',
+	'image/svg+xml': 'svg',
+	'image/bmp': 'bmp',
+	'image/tiff': 'tiff',
+};
+
+function getPathExtension(pathname: string): string | null {
+	const last = pathname.split('/').pop() || '';
+	const dot = last.lastIndexOf('.');
+	if (dot <= 0) return null;
+	const ext = last.slice(dot + 1).toLowerCase();
+	return IMAGE_EXTENSIONS.includes(ext) ? ext : null;
+}
+
+// Returns the URL that actually points at the image file. For proxy URLs
+// (e.g. DuckDuckGo's /iu/?u=<real-url>) this is the URL inside the query
+// parameter; otherwise it is the URL itself. Returns null if no image URL is found.
+export function resolveImageUrl(url: string): URL | null {
+	let parsedUrl: URL;
+	try {
+		parsedUrl = new URL(url);
+	} catch {
+		return null;
+	}
+
+	if (getPathExtension(parsedUrl.pathname)) return parsedUrl;
+
+	for (const [, value] of parsedUrl.searchParams.entries()) {
+		try {
+			// searchParams already decodes once; decode again for double-encoded values
+			let candidate = value;
+			try {
+				candidate = decodeURIComponent(value);
+			} catch {
+				// keep the value as is
+			}
+			const innerUrl = new URL(candidate);
+			if (getPathExtension(innerUrl.pathname)) return innerUrl;
+		} catch {
+			// Not a valid URL, skip
+		}
+	}
+
+	return null;
+}
+
 // Helper function to check if a URL is an image
 export function isImageUrl(url: string): boolean {
-	const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.tiff'];
+	return resolveImageUrl(url) !== null;
+}
 
-	const hasImageExtension = (pathname: string): boolean =>
-		imageExtensions.some(ext => pathname.toLowerCase().endsWith(ext));
+export function extensionFromContentType(contentType: string | undefined): string | null {
+	if (!contentType) return null;
+	const mime = contentType.split(';')[0].trim().toLowerCase();
+	return CONTENT_TYPE_EXTENSIONS[mime] ?? null;
+}
 
-	try {
-		const parsedUrl = new URL(url);
-
-		if (hasImageExtension(parsedUrl.pathname)) return true;
-
-		const uParam = parsedUrl.searchParams.get('u');
-		if (uParam) {
-			try {
-				const decoded = new URL(decodeURIComponent(uParam));
-				if (hasImageExtension(decoded.pathname)) return true;
-			} catch {
-				// 'u' parameter is not a valid URL, ignore
-			}
-		}
-
-		for (const [, value] of parsedUrl.searchParams.entries()) {
-			try {
-				const decoded = decodeURIComponent(value);
-				const innerUrl = new URL(decoded);
-				if (hasImageExtension(innerUrl.pathname)) return true;
-			} catch {
-				// Not a valid URL, skip
-			}
-		}
-
-		return false;
-	} catch {
-		return false;
-	}
+function getHeader(headers: Record<string, string> | undefined, name: string): string | undefined {
+	if (!headers) return undefined;
+	const key = Object.keys(headers).find(k => k.toLowerCase() === name);
+	return key ? headers[key] : undefined;
 }
 
 // Helper function to extract URL from clipboard data
@@ -76,20 +108,21 @@ export function getUrlFromClipboard(clipboardData: DataTransfer | null): string 
 }
 
 // Helper function to create a user-friendly filename
-export function generateUserFriendlyFilename(url: string, settings: ImageEmbedderSettings): string {
-	const urlObj = new URL(url);
-	
+export function generateUserFriendlyFilename(url: string, settings: ImageEmbedderSettings, contentType?: string): string {
+	// Use the real image URL (inner URL for proxies like DuckDuckGo)
+	const urlObj = resolveImageUrl(url) ?? new URL(url);
+
 	// Get the last meaningful part of the URL path
 	let filename = urlObj.pathname.split('/').pop() || 'image';
-	
-	// Remove query parameters and hash
-	filename = filename.split('?')[0].split('#')[0];
-	
-	// Get the extension
-	const extension = filename.split('.').pop()?.toLowerCase() || 'jpg';
-	
+
+	// Prefer the type the server reports, then the URL's extension, then jpg
+	const pathExtension = getPathExtension(urlObj.pathname);
+	const extension = extensionFromContentType(contentType) ?? pathExtension ?? 'jpg';
+
 	// Remove the extension from the filename
-	filename = filename.slice(0, -(extension.length + 1));
+	if (pathExtension) {
+		filename = filename.slice(0, filename.lastIndexOf('.'));
+	}
 	
 	// Clean up the filename:
 	// 1. Replace spaces and special characters with hyphens
@@ -111,9 +144,9 @@ export function generateUserFriendlyFilename(url: string, settings: ImageEmbedde
 	
 	// Replace placeholders in the format string
 	let finalFilename = settings.filenameFormat
-		.replace('{name}', filename)
-		.replace('{timestamp}', settings.useTimestamp ? timestamp : '')
-		.replace('{date}', date)
+		.replace(/\{name\}/g, filename)
+		.replace(/\{timestamp\}/g, settings.useTimestamp ? timestamp : '')
+		.replace(/\{date\}/g, date)
 		.replace(/-+/g, '-') // Clean up multiple consecutive hyphens
 		.replace(/-+$/g, ''); // Remove trailing hyphens
 	
@@ -134,14 +167,27 @@ async function ensureAttachmentFolder(app: App, folderPath: string): Promise<str
 	return folderPath;
 }
 
+// Returns folder/filename, adding -1, -2, ... before the extension if that file already exists
+export function getAvailablePath(app: App, folderPath: string, filename: string): string {
+	const folder = folderPath.replace(/^\/+|\/+$/g, '');
+	const prefix = folder ? `${folder}/` : '';
+	const dot = filename.lastIndexOf('.');
+	const base = dot > 0 ? filename.slice(0, dot) : filename;
+	const ext = dot > 0 ? filename.slice(dot) : '';
+
+	let candidate = `${prefix}${filename}`;
+	let counter = 1;
+	while (app.vault.getAbstractFileByPath(candidate)) {
+		candidate = `${prefix}${base}-${counter}${ext}`;
+		counter++;
+	}
+	return candidate;
+}
+
 // Helper function to download and save image
 export async function downloadAndSaveImage(app: App, url: string, folderPath: string, settings: ImageEmbedderSettings): Promise<string> {
 	// Ensure attachment folder exists
 	await ensureAttachmentFolder(app, folderPath);
-
-	// Generate user-friendly filename
-	const filename = generateUserFriendlyFilename(url, settings);
-	const fullPath = `${folderPath}/${filename}`;
 
 	// Download image
 	const response = await requestUrl({ url, throw: false });
@@ -149,6 +195,10 @@ export async function downloadAndSaveImage(app: App, url: string, folderPath: st
 		throw new Error(`Failed to download image: ${response.status}`);
 	}
 	const arrayBuffer = response.arrayBuffer;
+
+	// Generate user-friendly filename, using the server's content type for the extension
+	const filename = generateUserFriendlyFilename(url, settings, getHeader(response.headers, 'content-type'));
+	const fullPath = getAvailablePath(app, folderPath, filename);
 
 	// Save to vault
 	await app.vault.createBinary(fullPath, arrayBuffer);
@@ -213,6 +263,8 @@ export default class ImageEmbedderPlugin extends Plugin {
 						});
 
 						if (!confirmed) {
+							// We prevented the normal paste, so paste the URL as plain text
+							editor.replaceSelection(url);
 							return;
 						}
 					}
@@ -233,7 +285,9 @@ export default class ImageEmbedderPlugin extends Plugin {
 					new Notice(message, 3000);
 				} catch (error) {
 					console.error('Error processing image:', error);
-					new Notice('Failed to download and embed image. Check console for details.', 5000);
+					// Don't lose what the user pasted
+					editor.replaceSelection(url);
+					new Notice('Failed to download image, pasted the URL instead. Check console for details.', 5000);
 				}
 			})
 		);
